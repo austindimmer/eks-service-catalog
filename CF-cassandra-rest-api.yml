@@ -1,0 +1,199 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy Cassandra Demo Api (CAPI) ) into the "Amazon EKS QuickStart"
+  uses IRSA (IAM Role for Service Account)
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Cassandra Rest API Sample
+        Parameters:
+          - capiImage
+          - capiReplicationFactor
+          - capiIngressClass
+          - capiIngressCertificateArn
+          - capiDomain
+      - Label:
+          default: Cassandra
+        Parameters:
+          - cassandraHost
+          - cassandraPort
+          - cassandraSecretName
+          - cassandraSecretRegion
+      - Label:
+          default: Kube Cluster
+        Parameters:
+          - KubeClusterName
+          - KubeConfigPath
+          - KubeGetLambdaArn
+          - KubeConfigKmsContext
+          - KubeOIDCProvider          
+          - HelmLambdaArn
+          - Namespace
+          - Name
+          - RepoUrl
+          
+    ParameterLabels:
+      capiImage:
+        default: Cassandra rest api demo docker image
+      capiReplicationFactor:
+        default : Replication factor uses for demo people keyspace
+      capiIngressClass:
+        default : Ingress class to uses
+      capiIngressCertificateArn:
+        default : AWS Certificate Arn to uses for the TLS encryption
+      capiDomain:
+        default : Domain to uses for the capi API. (must match subdomain of domain managed by externalDNS)
+        
+      cassandraHost:
+        default : Cassandra Host used for Capi
+      cassandraPort:
+        default : Cassandra Port used for Capi
+      cassandraSecretName:
+        default : Name of the secret in Secret Manager to uses
+      cassandraSecretRegion:
+        default : Region of the secret in Secret Manager to uses
+
+      KubeClusterName:
+        default: EKS Kube Cluster Name
+      KubeConfigPath:
+        default: Kube Config Path
+      KubeGetLambdaArn:
+        default: Kube Get Lambda ARN
+      KubeConfigKmsContext:
+        default: Kube KMS Context
+      KubeOIDCProvider:
+        default: Name of the oidc provider associate with your EKS Cluster
+      HelmLambdaArn:
+        default: EKS Stack HelmLambda ARN
+      Namespace:
+        default: Kube Namespace for this function
+      Name:
+        default: Kube Name for this function
+      RepoUrl:
+        degault: Helm repo to uses
+        
+Parameters:
+   capiImage:
+     Description: 'ex: repo/image:version'
+     Type: String
+     Default: "allamand/rawsc:latest"
+   capiReplicaitonFactor:
+     Description: 'ex: 1'
+     Type: String
+     Default: "3"
+   capiIngressClass:
+     Description: 'depend on what is available (alb, nginx, traffic, ..)''
+     Type: String
+     Default: "alb"
+   capiIngressCertificateArn:
+     Description: 'ex: arn:aws:acm:us-east-1:${ACCOUNT_NAME}:certificate/7505f2af-8ca6-49ae-9cbe-5c02013634d('
+     Type: String
+   capiDomain:
+     Description: 'ex: capi.mydomain.com'
+     Type: String
+
+   KubeClusterName:
+    Description: 'Get this from the EKSStack outputs section in CloudFormation.'
+    Type: String
+   KubeConfigPath:
+    Description: 'Get this from the EKSStack outputs section in CloudFormation.'
+    Type: String
+   KubeConfigKmsContext:
+    Description: 'This is using the default from the AWS EKS Quick Start, if you modified
+    this context when deploying. You need to use the modified KMS context here.'
+    Type: String
+    Default: "EKSQuickStart"
+   KubeOIDCProvider:
+    Description: 'Get the oidc provider from your EKS configuration without https: ex: oidc.eks.us-east-1.amazonaws.com/id/17B548BB618492173CE72DB7BF83E921'
+    Type: String
+   HelmLambdaArn:
+    Description: 'Get this from the EKSStack outputs section in CloudFormation.'
+    Type: String
+    
+   Namespace:
+    Description: 'Modify to use a custom Namespace. The Namespace up to 63 characters
+    long. The characters allowed in names are: digits (0-9), lower case letters (a-z),
+    and underscore(s)(cannot start or end with)'
+    Type: String
+    Default: "kube-system"
+   Name:
+    Description: 'Modify to use a custom Names. The Names up to 253 characters
+    long. The characters allowed in names are: digits (0-9), lower case letters (a-z), -,
+    and ..'
+    Type: String
+    Default: "capi"
+   RepoUrl:
+    Description: 'Modify to use a other helm repo than stable'
+    Type: String
+    Default: "http://allamand-helm.s3-website-us-east-1.amazonaws.com/index.yaml"
+    
+Resources:
+
+  ExternalDNSPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'route53:ChangeResourceRecordSets'
+            Resource:
+              - 'arn:aws:route53:::hostedzone/*'
+          - Effect: Allow
+            Action:
+              - 'route53:ListHostedZones'
+              - 'route53:ListResourceRecordSets'
+            Resource:
+              - '*'
+
+  ExternalDNSRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        !Sub |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/${KubeOIDCProvider}"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "${KubeOIDCProvider}:aud": "sts.amazonaws.com",
+                    "${KubeOIDCProvider}:sub": "system:serviceaccount:kube-system:${Name}"
+                  }
+                }
+              }
+            ]
+          }
+      ManagedPolicyArns:
+        - !Ref ExternalDNSPolicy
+
+  ExternalDNSHelmChart:
+    Type: "Custom::Helm"
+    Version: '1.0'
+    Properties:
+      ServiceToken: !Ref HelmLambdaArn
+      KubeConfigPath: !Ref KubeConfigPath
+      KubeConfigKmsContext: !Ref KubeConfigKmsContext
+      KubeClusterName: !Ref KubeClusterName
+      Namespace: !Ref Namespace
+      Chart: stable/external-dns
+      Name: !Ref Name
+      RepoUrl: !Ref RepoUrl
+      Values:
+        clusterName: !Ref KubeClusterName
+        domainFilters[0]: !Ref domainFilters
+        rbac.serviceAccountAnnotations."eks\.amazonaws\.com/role-arn": !GetAtt ExternalDNSRole.Arn
+        txt-owner-id: !Ref KubeClusterName
+        policy: !Ref externalDNSOption
+
+Outputs:
+  ExternalDNSReleaseName:
+    Value: !Ref ExternalDNSHelmChart
+

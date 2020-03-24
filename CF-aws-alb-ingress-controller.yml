@@ -1,0 +1,270 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create an AWS ALB Ingress Controller into the "Amazon EKS QuickStart" cluster
+  uses IRSA (IAM Role for Service Account)
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: AlbIngress
+        Parameters:
+          - notUsed
+          - autoDiscoverAwsRegion
+          - autoDiscoverAwsVpcID
+          - KubeOIDCProvider
+      - Label:
+          default: Kube Cluster
+        Parameters:
+          - KubeClusterName
+          - KubeConfigPath
+          - KubeConfigKmsContext
+          - HelmLambdaArn
+          - Namespace
+          - Name
+          - RepoUrl
+          
+    ParameterLabels:
+      notUsed:
+        default: This is not used :)
+      autoDiscoverAwsRegion:
+        default: Auto Discover AS Region
+      autoDiscoverAwsVpcID:
+        default: Auto Discover AWS VPC ID
+      albRoleArn:
+        default: ARN for IAM Role to be used by ALB ingress controller pods
+      KubeOIDCProvider:
+        default: Name of the oidc provider associate with your EKS Cluster
+      KubeClusterName:
+        default: EKS Kube Cluster Name
+      KubeConfigPath:
+        default: Kube Config Path
+      KubeConfigKmsContext:
+        default: Kube KMS Context
+      HelmLambdaArn:
+        default: EKS Stack HelmLambda ARN
+      Namespace:
+        default: Kube Namespace for this function
+      Name:
+        default: Kube Name for this function
+      RepoUrl:
+        degault: Helm repo to uses
+        
+Parameters:
+   notUsed:
+    AllowedPattern: ^[a-z][a-z0-9_]*$
+    ConstraintDescription: User name parameter must be lowercase, begin with a letter,
+      contain only alphanumeric characters or underscores, and be less than 60 characters.      
+    Default: thisisnotused
+    Description: 'This parameter is just here to show how you can manage additionals parameters'
+    MaxLength: '60'
+    MinLength: '1'
+    Type: String
+   autoDiscoverAwsRegion:
+    AllowedValues: [true, false]
+    ConstraintDescription: true or false
+    Default: true
+    Description: 'auto discover awsRegion from ec2metadata, omit awsRegion when this set to true'
+    Type: String
+   autoDiscoverAwsVpcID:
+    AllowedValues: [true, false]
+    ConstraintDescription: true or false
+    Default: true
+    Description: 'auto discover awsVpcID from ec2metadata, omit awsRegion when this set to true'
+    Type: String
+   KubeOIDCProvider:
+    Description: 'Get the oidc provider from your EKS configuration without https: ex: oidc.eks.us-east-1.amazonaws.com/id/17B548BB618492173CE72DB7BF83E921'
+    Type: String
+   HelmLambdaArn:
+    Description: 'Get this from the EKSStack outputs section in CloudFormation.'
+    Type: String
+   KubeClusterName:
+    Description: 'Get this from the EKSStack outputs section in CloudFormation.'
+    Type: String
+   KubeConfigPath:
+    Description: 'Get this from the EKSStack outputs section in CloudFormation.'
+    Type: String
+   KubeConfigKmsContext:
+    Description: 'This is using the default from the AWS EKS Quick Start, if you modified
+    this context when deploying. You need to use the modified KMS context here.'
+    Type: String
+    Default: "EKSQuickStart"
+   Namespace:
+    Description: 'Modify to use a custom Namespace. The Namespace up to 63 characters
+    long. The characters allowed in names are: digits (0-9), lower case letters (a-z),
+    and underscore(s)(cannot start or end with)'
+    Type: String
+    Default: "kube-system"
+   Name:
+    Description: 'Modify to use a custom Names. The Names up to 253 characters
+    long. The characters allowed in names are: digits (0-9), lower case letters (a-z), -,
+    and ..'
+    Type: String
+    Default: "aws-alb-ingress-controller"
+   RepoUrl:
+    Description: 'Modify to use a other helm repo than stable'
+    Type: String
+    Default: "https://kubernetes-charts-incubator.storage.googleapis.com"
+
+
+Resources:
+
+  ALBPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'acm:DescribeCertificate'
+              - 'acm:ListCertificates'
+              - 'acm:GetCertificate'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'ec2:AuthorizeSecurityGroupIngress'
+              - 'ec2:CreateSecurityGroup'
+              - 'ec2:CreateTags'
+              - 'ec2:DeleteTags'
+              - 'ec2:DeleteSecurityGroup'
+              - 'ec2:DescribeAccountAttributes'
+              - 'ec2:DescribeAddresses'
+              - 'ec2:DescribeInstances'
+              - 'ec2:DescribeInstanceStatus'
+              - 'ec2:DescribeInternetGateways'
+              - 'ec2:DescribeNetworkInterfaces'
+              - 'ec2:DescribeSecurityGroups'
+              - 'ec2:DescribeSubnets'
+              - 'ec2:DescribeTags'
+              - 'ec2:DescribeVpcs'
+              - 'ec2:ModifyInstanceAttribute'
+              - 'ec2:ModifyNetworkInterfaceAttribute'
+              - 'ec2:RevokeSecurityGroupIngress'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'elasticloadbalancing:AddListenerCertificates'
+              - 'elasticloadbalancing:AddTags'
+              - 'elasticloadbalancing:CreateListener'
+              - 'elasticloadbalancing:CreateLoadBalancer'
+              - 'elasticloadbalancing:CreateRule'
+              - 'elasticloadbalancing:CreateTargetGroup'
+              - 'elasticloadbalancing:DeleteListener'
+              - 'elasticloadbalancing:DeleteLoadBalancer'
+              - 'elasticloadbalancing:DeleteRule'
+              - 'elasticloadbalancing:DeleteTargetGroup'
+              - 'elasticloadbalancing:DeregisterTargets'
+              - 'elasticloadbalancing:DescribeListenerCertificates'
+              - 'elasticloadbalancing:DescribeListeners'
+              - 'elasticloadbalancing:DescribeLoadBalancers'
+              - 'elasticloadbalancing:DescribeLoadBalancerAttributes'
+              - 'elasticloadbalancing:DescribeRules'
+              - 'elasticloadbalancing:DescribeSSLPolicies'
+              - 'elasticloadbalancing:DescribeTags'
+              - 'elasticloadbalancing:DescribeTargetGroups'
+              - 'elasticloadbalancing:DescribeTargetGroupAttributes'
+              - 'elasticloadbalancing:DescribeTargetHealth'
+              - 'elasticloadbalancing:ModifyListener'
+              - 'elasticloadbalancing:ModifyLoadBalancerAttributes'
+              - 'elasticloadbalancing:ModifyRule'
+              - 'elasticloadbalancing:ModifyTargetGroup'
+              - 'elasticloadbalancing:ModifyTargetGroupAttributes'
+              - 'elasticloadbalancing:RegisterTargets'
+              - 'elasticloadbalancing:RemoveListenerCertificates'
+              - 'elasticloadbalancing:RemoveTags'
+              - 'elasticloadbalancing:SetIpAddressType'
+              - 'elasticloadbalancing:SetSecurityGroups'
+              - 'elasticloadbalancing:SetSubnets'
+              - 'elasticloadbalancing:SetWebACL'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'iam:CreateServiceLinkedRole'
+              - 'iam:GetServerCertificate'
+              - 'iam:ListServerCertificates'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'cognito-idp:DescribeUserPoolClient'
+              - 'cognito-idp:*'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'waf-regional:GetWebACLForResource'
+              - 'waf-regional:GetWebACL'
+              - 'waf-regional:AssociateWebACL'
+              - 'waf-regional:DisassociateWebACL'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'tag:GetResources'
+              - 'tag:TagResources'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'waf:GetWebACL'
+            Resource: '*'
+        
+
+  ALBRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        !Sub |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/${KubeOIDCProvider}"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "${KubeOIDCProvider}:aud": "sts.amazonaws.com",
+                    "${KubeOIDCProvider}:sub": "system:serviceaccount:kube-system:${Name}"
+                  }
+                }
+              }
+            ]
+          }
+      ManagedPolicyArns:
+        - !Ref ALBPolicy
+        
+  ALBIngressControllerHelmChart:
+    Type: "Custom::Helm"
+    Version: '1.0'
+    Properties:
+      ServiceToken: !Ref HelmLambdaArn
+      KubeConfigPath: !Ref KubeConfigPath
+      KubeConfigKmsContext: !Ref KubeConfigKmsContext
+      KubeClusterName: !Ref KubeClusterName
+      Namespace: !Ref Namespace
+      Chart: incubator/aws-alb-ingress-controller
+      Name: !Ref Name
+      RepoUrl: !Ref RepoUrl
+      Values:
+        notUsed: !Ref notUsed
+        clusterName: !Ref KubeClusterName
+        autoDiscoverAwsRegion: !Ref autoDiscoverAwsRegion
+        autoDiscoverAwsVpcID: !Ref autoDiscoverAwsVpcID
+        rbac.serviceAccountAnnotations."eks\.amazonaws\.com/role-arn": !GetAtt ALBRole.Arn
+
+
+#  WPElbHostName:
+#    DependsOn: HelmExample
+#    Type: "Custom::KubeGet"
+#    Version: '1.0'
+#    Properties:
+#     ServiceToken: !Ref KubeGetLambdaArn
+#     KubeConfigPath: !Ref KubeConfigPath
+#     KubeConfigKmsContext: !Ref KubeConfigKmsContext
+#     Namespace: !Ref Namespace
+#     Name: !Sub 'service/${Name}-wordpress'
+#     JsonPath: '{.status.loadBalancer.ingress[0].hostname}'
+
+Outputs:
+  AlbIngressReleaseName:
+    Value: !Ref ALBIngressControllerHelmChart
+#    WPElbHostName:
+#      Value: !Ref WPElbHostName

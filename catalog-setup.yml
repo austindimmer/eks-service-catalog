@@ -1,0 +1,248 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Setup for Using Service Catalog
+
+Parameters:
+
+  ApplicationName:
+    Type: String
+  
+Resources:
+  
+  #Template Bucket to store out CF Templates products
+  TemplateBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete      
+
+  TemplateBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref TemplateBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:        
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: !Join 
+              - ''
+              - - !GetAtt 
+                  - TemplateBucket
+                  - Arn
+                - /*
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+
+  #Role used when launching a product
+  SCLaunchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: sc-launch-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - servicecatalog.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+  SCLaunchPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: sc-launch-policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Resource: "*"
+            Action: 
+              - codebuild:*
+              - codepipeline:*
+              - codecommit:*
+              - ecs:*
+              - ecr:*
+              - eks:*
+              - events:PutRule
+              - events:DeleteRule
+              - events:DescribeRule
+              - events:RemoveTargets
+              - events:PutTargets
+              - events:PutPermission
+              - events:RemovePermission
+              - ec2:CreateSecurityGroup
+              - ec2:DeleteSecurityGroup
+              - ec2:Describe*         
+              - iam:PassRole
+              - iam:CreateRole
+              - iam:CreatePolicy
+              - iam:CreateRolePolicy
+              - iam:AttachRolePolicy
+              - iam:DeleteRole
+              - iam:DeletePolicy
+              - iam:DetachRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:Get*
+              - iam:PutRolePolicy
+              - catalog-user:*
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:RevokeSecurityGroupIngress
+              - cloudformation:CreateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStacks
+              - cloudformation:GetTemplateSummary
+              - cloudformation:SetStackPolicy
+              - cloudformation:ValidateTemplate
+              - cloudformation:UpdateStack
+              - s3:Get*
+              - s3:CreateBucket
+              - s3:DeleteBucket
+              - s3:PutBucketPolicy
+              - s3:DeleteBucketPolicy
+              - lambda:*
+      Roles:
+        -
+          !Ref SCLaunchRole
+
+  ProductTeamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub ${ApplicationName}-product-team-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument: 
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                - codepipeline:*
+                Resource: !Sub arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${ApplicationName}*
+                Effect: Allow
+              - Action:
+                - codecommit:*
+                Resource: !Sub arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${ApplicationName}
+                Effect: Allow
+              - Action:
+                - codebuild:*
+                Resource:
+                - !Sub arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${ApplicationName}*
+                - !Sub arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:build/${ApplicationName}*
+                Effect: Allow
+              - Effect: Allow
+                Action:
+                - cloudformation:CreateStack
+                - cloudformation:DeleteStack
+                - cloudformation:DescribeStackEvents
+                - cloudformation:DescribeStacks
+                - cloudformation:SetStackPolicy
+                - cloudformation:ValidateTemplate
+                - cloudformation:UpdateStack
+                - cloudformation:CreateChangeSet
+                - cloudformation:DescribeChangeSet
+                - cloudformation:ExecuteChangeSet
+                - cloudformation:ListChangeSets
+                - cloudformation:DeleteChangeSet
+                - cloudformation:TagResource
+                - cloudformation:CreateStackSet
+                - cloudformation:CreateStackInstances
+                - cloudformation:UpdateStackSet
+                - cloudformation:UpdateStackInstances
+                - cloudformation:DeleteStackSet
+                - cloudformation:DeleteStackInstances
+                - cloudformation:DescribeStackSet
+                - cloudformation:DescribeStackInstance
+                - cloudformation:DescribeStackSetOperation
+                - cloudformation:ListStackInstances
+                - cloudformation:ListStackResources
+                - cloudformation:ListStackSetOperations
+                - cloudformation:ListStackSetOperationResults
+                Resource:
+                - arn:aws:cloudformation:*:*:stack/SC-*
+                - arn:aws:cloudformation:*:*:stack/StackSet-SC-*
+                - arn:aws:cloudformation:*:*:changeSet/SC-*
+                - arn:aws:cloudformation:*:*:stackset/SC-*
+              - Effect: Allow
+                Action:
+                - cloudformation:GetTemplateSummary
+                - codepipeline:ListActionTypes
+                - s3:ListAllMyBuckets
+                - events:ListRules
+                - ecs:ListClusters
+                - ecs:ListServices
+                - codecommit:ListRepositories
+                - codebuild:ListProjects
+                - servicecatalog:DescribeProduct
+                - servicecatalog:DescribeProductView
+                - servicecatalog:DescribeProvisioningParameters
+                - servicecatalog:ListLaunchPaths
+                - servicecatalog:ProvisionProduct
+                - servicecatalog:SearchProducts
+                - ssm:DescribeDocument
+                - ssm:GetAutomationExecution
+                - config:DescribeConfigurationRecorders
+                - config:DescribeConfigurationRecorderStatus
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                - servicecatalog:DescribeProvisionedProduct
+                - servicecatalog:DescribeRecord
+                - servicecatalog:ListRecordHistory
+                - servicecatalog:ScanProvisionedProducts
+                - servicecatalog:TerminateProvisionedProduct
+                - servicecatalog:UpdateProvisionedProduct
+                - servicecatalog:SearchProvisionedProducts
+                - servicecatalog:CreateProvisionedProductPlan
+                - servicecatalog:DescribeProvisionedProductPlan
+                - servicecatalog:ExecuteProvisionedProductPlan
+                - servicecatalog:DeleteProvisionedProductPlan
+                - servicecatalog:ListProvisionedProductPlans
+                - servicecatalog:ListServiceActionsForProvisioningArtifact
+                - servicecatalog:ExecuteProvisionedProductServiceAction
+                - health:DescribeEventAggregates
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    servicecatalog:userLevel: self
+              - Action:
+                - iam:ListRoles
+                Resource:
+                - "*"
+                Effect: Allow
+              - Action:
+                - iam:PassRole
+                Resource:
+                - !Sub arn:aws:iam::${AWS::AccountId}:role/sc-launch-role
+                - !Sub arn:aws:iam::${AWS::AccountId}:role/${ApplicationName}-codepipeline-role
+                Effect: Allow
+              - Action:
+                - S3:*
+                Resource:
+                - !Sub arn:aws:s3:::${ApplicationName}-artifactbucket-*
+                - !Sub arn:aws:s3:::${ApplicationName}-artifactbucket-*/*
+                Effect: Allow
+              - Action:
+                - codepipeline:ListPipelines
+                Resource:
+                - !Sub arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:*
+                Effect: Allow        
+
+Outputs:
+  ProductTeamRoleName:
+    Value: !Ref ProductTeamRole
+  ScLaunchRoleName:    
+    Value: !Ref SCLaunchRole
+  TemplateBucketName:
+    Value: !Ref TemplateBucket

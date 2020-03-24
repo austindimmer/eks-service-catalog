@@ -1,0 +1,174 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates a Service Catalog Portfolio for EKS
+Parameters:
+
+  ApplicationName:
+    Type: String
+  TemplateBucketName:
+    Type: String
+    
+Resources:
+
+  #Declare the Portfolie
+  AppServicesPortfolio:
+    Type: "AWS::ServiceCatalog::Portfolio"
+    Properties:
+      ProviderName: 'Octanct IT'
+      Description: 'Portfolio for EKS application services in Octanct corp'
+      DisplayName: 'EKS-Services'
+
+  #Associate Role with Portfolio
+  PortfolioProductAssoc:
+    Type: "AWS::ServiceCatalog::PortfolioPrincipalAssociation"
+    Properties:
+      PrincipalARN: !Sub arn:aws:iam::${AWS::AccountId}:role/${ApplicationName}-product-team-role
+      PortfolioId: !Ref AppServicesPortfolio 
+      PrincipalType: IAM
+  
+  
+  
+  
+  ############################################
+  #Product: Code Pipeline for EKS  with GitHub
+  BuildPipelineForEKS:
+    Type: "AWS::ServiceCatalog::CloudFormationProduct"
+    Properties:
+      Owner: 'Octanct IT'      
+      Description: 'Pipeline and permissions required to deploy apps on AWS EKS'      
+      Name: 'EKS Build Pipeline Tools With GitHub'
+      ProvisioningArtifactParameters: 
+        - 
+          Info: { "LoadTemplateFromURL": !Sub "https://s3.amazonaws.com/${TemplateBucketName}/ci-cd-codepipeline.cfn-without-lambda.yml" }          
+          Name: v0.4
+ 
+  #Role to use to create the Pipeline        
+  BuildPipelineForEKSConstraint:
+    Type: "AWS::ServiceCatalog::LaunchRoleConstraint"
+    DependsOn: BuildPipelineForEKSAssoc
+    Properties:
+      Description: 'IAM role to create product pipeline for EKS'      
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref BuildPipelineForEKS
+      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/sc-launch-role
+
+  #Associate Product with Portfolio    
+  BuildPipelineForEKSAssoc:
+    Type: "AWS::ServiceCatalog::PortfolioProductAssociation"
+    Properties:
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref BuildPipelineForEKS
+
+
+  ##################################################
+  #Product: Code Pipeline for EKS  with CodePipeline
+  BuildPipelineCodeCommitForEKS:
+    Type: "AWS::ServiceCatalog::CloudFormationProduct"
+    Properties:
+      Owner: 'Octanct IT'      
+      Description: 'Pipeline and permissions required to deploy apps on AWS EKS'      
+      Name: 'EKS Build Pipeline Tools With CodeCommit'
+      ProvisioningArtifactParameters: 
+        - 
+          Info: { "LoadTemplateFromURL": !Sub "https://s3.amazonaws.com/${TemplateBucketName}/ci-cd-codepipeline.cfn-without-lambda-codebuild.yml" }
+          Name: v0.9
+ 
+  #Role to use to create the Pipeline        
+  BuildPipelineCodeCommitForEKSConstraint:
+    Type: "AWS::ServiceCatalog::LaunchRoleConstraint"
+    DependsOn: BuildPipelineForEKSAssoc
+    Properties:
+      Description: 'IAM role to create product pipeline for EKS'      
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref BuildPipelineCodeCommitForEKS
+      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/sc-launch-role
+
+  #Associate Product with Portfolio    
+  BuildPipelineCodeCommitForEKSAssoc:
+    Type: "AWS::ServiceCatalog::PortfolioProductAssociation"
+    Properties:
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref BuildPipelineCodeCommitForEKS
+
+   
+  ###################################
+  # Helm Chart ALB Ingress Controller
+  AlbIngressProduct:
+    Type: "AWS::ServiceCatalog::CloudFormationProduct"
+    Properties:
+      Owner: 'Octanct IT'      
+      Description: 'Core tools and permissions required to deploy apps on AWS'      
+      Name: 'ALB Ingress Controller'
+      ProvisioningArtifactParameters: 
+        - 
+          Info: { "LoadTemplateFromURL": !Sub "https://s3.amazonaws.com/${TemplateBucketName}/CF-aws-alb-ingress-controller.yml" }          
+          Name: v0.3
+          
+  AlbIngressProductConstraint:
+    Type: "AWS::ServiceCatalog::LaunchRoleConstraint"
+    DependsOn: AlbIngressProductAssoc
+    Properties:
+      Description: 'IAM role to launch ALB Ingress product'      
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref AlbIngressProduct
+      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/sc-launch-role
+
+  AlbIngressProductAssoc:
+    Type: "AWS::ServiceCatalog::PortfolioProductAssociation"
+    Properties:
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref AlbIngressProduct  
+
+  ###################################
+  # Helm Chart ExternalDNS Controller
+  ExternalDNSProduct:
+    Type: "AWS::ServiceCatalog::CloudFormationProduct"
+    Properties:
+      Owner: 'Octanct IT'      
+      Description: 'ExternalDNS Helm Chart for EKS'      
+      Name: 'ExternalDNS controller'
+      ProvisioningArtifactParameters: 
+        - 
+          Info: { "LoadTemplateFromURL": !Sub "https://s3.amazonaws.com/${TemplateBucketName}/CF-external-dns.yml" }          
+          Name: v0.1
+          
+  ExternalDNSProductConstraint:
+    Type: "AWS::ServiceCatalog::LaunchRoleConstraint"
+    DependsOn: ExternalDNSProductAssoc
+    Properties:
+      Description: 'IAM role to launch ALB Ingress product'      
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref ExternalDNSProduct
+      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/sc-launch-role
+
+  ExternalDNSProductAssoc:
+    Type: "AWS::ServiceCatalog::PortfolioProductAssociation"
+    Properties:
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref ExternalDNSProduct
+   
+
+  ############################
+  # EKS QuickStart Cluster
+  EKSQuickStartProduct:
+    Type: "AWS::ServiceCatalog::CloudFormationProduct"
+    Properties:
+      Owner: 'Central IT'      
+      Description: 'EKS QuickStart'      
+      Name: 'EKS QuickStart'
+      ProvisioningArtifactParameters: 
+        - 
+          Info: { "LoadTemplateFromURL": !Sub "https://s3.amazonaws.com/${TemplateBucketName}/amazon-eks-master.template.yaml" }          
+          Name: v0.3        
+  EKSQuickStartProductConstraint:
+    Type: "AWS::ServiceCatalog::LaunchRoleConstraint"
+    DependsOn: EKSQuickStartProductAssoc
+    Properties:
+      Description: 'IAM role to launch service catalog products'      
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref EKSQuickStartProduct
+      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/sc-launch-role         
+  EKSQuickStartProductAssoc:
+    Type: "AWS::ServiceCatalog::PortfolioProductAssociation"
+    Properties:
+      PortfolioId: !Ref AppServicesPortfolio
+      ProductId: !Ref EKSQuickStartProduct  
