@@ -22,7 +22,11 @@ with self-sufficient access to enterprise standards for deployments.
 
 ## What we are building:
 
+### Creating Product using Service Catalog
+
 ![](img/mb3-ServiceCatalog.png) 
+
+### Continuous Build & Deployment of Application in EKS Cluster
 
 ![](img/mb3-pipeline.png) 
 
@@ -343,6 +347,21 @@ In this example, I will uses:
 > You can't change the Namespace in the environment variable, if you don't change the Namespace in the CF-iam-role-capi.yaml CloudFormation template which creates the CAPI IAM Role.
 
 Go to CodeCommit to retrieve the connections parameters to your repository.
+
+> /!\ Actually the EKS_KUBECTL_ROLE_ARN define in the pipeline is not correctly added to the aws-auth ConfigMap, so you need to manually
+add it
+
+```
+kubectl -n kube-system edit cm aws-auth -o yaml
+```
+
+add this section in RoleMaps (change with your EKS_KUBECTL_ROLE_ARN from your codebuild env vars)
+```
+    - groups:
+      - system:masters
+      rolearn: arn:aws:iam::382076407153:role/SC-382076407153-pp-u37xbryirghgm-KubectlRoleName
+      username: arn:aws:iam::382076407153:role/SC-382076407153-pp-u37xbryirghgm-KubectlRoleName
+```
 
 Clone the repo from Github:
 
