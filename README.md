@@ -1,16 +1,22 @@
 # EKS Service Catalog blueprint
 
-This is sample code for Amazon EKS continuous delivery using AWS Service Catalog
+It is common pattern for AWS customers to be able to provide IT as a service for their products teams.
+For instance, giving the ability for developers to be able to quickly deploy and uses AWS services in
+order to allow them to build & deploy new products for their own customers.
 
-The purpose of this project is to propose an AWS Service Catalog to ease :
-- the Creation of standardized EKS Cluster
-- the deployment of Kubernetes add-ons such as ALB ingress controller or ExternalDNS.
-- the creation of CodePipeline to have Devops teams create Continuous Deployment pipeline for their application.
+With this repository we will see how to leverage Service Catalog, in order to let IT team construct common
+deployment patterns to be then uses in self-service mode by developers.
+
+We will uses Service Catalog to build an EKS environment and a CodePipeline to automatically build and deploy
+a sample application in our EKS cluster. we will see:
+
+- The creation of standardized EKS Cluster
+- The deployment of Kubernetes add-ons such as ALB ingress controller and ExternalDNS.
+- The creation of CodePipeline to have Devops teams create Continuous Deployment pipeline for their application.
 
 ## What is AWS Service Catalog
 
-AWS Service Catalog will allow to easilly manage deployment of services and application in your AWS environment.
-
+AWS Service Catalog is used to provides self service deployment of AWS services and application in your AWS environment.
 
 The AWS Service Catalog will allow administrators and product teams to provide standarization, ease governance
 controls and increase security by provided a way for teams to create regulated environments.
@@ -24,11 +30,11 @@ with self-sufficient access to enterprise standards for deployments.
 
 ### Creating Product using Service Catalog
 
-![](img/mb3-ServiceCatalog.png) 
+![](img/mb3-ServiceCatalog.png)
 
 ### Continuous Build & Deployment of Application in EKS Cluster
 
-![](img/mb3-pipeline.png) 
+![](img/mb3-pipeline.png)
 
 
 ## Pre-requisites for this demo
@@ -38,8 +44,6 @@ To follow this demo you'll need to have some pre-requisites
 - Create a Route53 hosted zone link to your domain name. (in my case this will be mb3.allamand.com)
 - Create a wildcart Certificate in Certificate Manager for your hosted zone (ex: *.mb3.allamand.com)
 > write down the certificate arn, we will need this later
-
-
 
 
 ## Create your Service Catalog
@@ -61,7 +65,7 @@ export APPLICATION_NAME=mb3-catalog
 Then you can create the CloudFormation stack which will setup the environment:
 ```
 aws cloudformation create-stack --stack-name ${APPLICATION_NAME}-setup \
- --template-body file://catalog-setup.yml \
+ --template-body file://templates/catalog-setup.yml \
  --capabilities CAPABILITY_NAMED_IAM \
  --parameters ParameterKey=ApplicationName,ParameterValue=$APPLICATION_NAME
 ```
@@ -82,7 +86,7 @@ Here we need to retrieve the name of the AWS S3 Bucket in which we will stores o
 
 ```
 export TEMPLATE_BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name ${APPLICATION_NAME}-setup --query 'Stacks[0].Outputs[?OutputKey==`TemplateBucketName`].OutputValue' --output text)
-echo $TEMPLATE_BUCKET_NAME  
+echo $TEMPLATE_BUCKET_NAME
 ```
 
 ### Copy our Products templates to the S3 Bucket
@@ -100,11 +104,11 @@ echo $APPLICATION_NAME $TEMPLATE_BUCKET_NAME
 - Copy the template to create a EKS QuickStart cluster
 
 ```
-aws s3 cp amazon-eks-master.template.yaml \
+aws s3 cp templates/amazon-eks-master.template.yaml \
 s3://${TEMPLATE_BUCKET_NAME}/amazon-eks-master.template.yaml
 ```
 
-> Note: this template will trigger official [AWS quickstart templates](https://github.com/aws-quickstart/quickstart-amazon-eks) 
+> Note: this template will trigger official [AWS quickstart templates](https://github.com/aws-quickstart/quickstart-amazon-eks)
 
 ![](https://camo.githubusercontent.com/d03b474fab5944c7332263f0010f2c7136e51b24/68747470733a2f2f64302e6177737374617469632e636f6d2f706172746e65722d6e6574776f726b2f517569636b53746172742f646174617368656574732f616d617a6f6e2d656b732d6f6e2d6177732d6172636869746563747572652d6469616772616d2e706e67)
 
@@ -112,27 +116,27 @@ s3://${TEMPLATE_BUCKET_NAME}/amazon-eks-master.template.yaml
 - Copy the template to create a Pipeline for our application using CodeBuild
 
 ```
-aws s3 cp ci-cd-codepipeline.cfn-without-lambda-codebuild.yml \
+aws s3 cp templates/ci-cd-codepipeline.cfn-without-lambda-codebuild.yml \
 s3://${TEMPLATE_BUCKET_NAME}/ci-cd-codepipeline.cfn-without-lambda-codebuild.yml
 ```
 
 - Copy the template to create a Pipeline for our application using GitHub
 
 ```
-aws s3 cp ci-cd-codepipeline.cfn-without-lambda.yml \
+aws s3 cp templates/ci-cd-codepipeline.cfn-without-lambda.yml \
 s3://${TEMPLATE_BUCKET_NAME}/ci-cd-codepipeline.cfn-without-lambda.yml
 ```
 
 - Copy the template used to create our ALB ingress Controller inside our EKS cluster
 ```
-aws s3 cp CF-aws-alb-ingress-controller.yml \
+aws s3 cp templates/CF-aws-alb-ingress-controller.yml \
 s3://${TEMPLATE_BUCKET_NAME}/CF-aws-alb-ingress-controller.yml
 ```
 
 - Copy the template used to create the ExternalDNS controller inside our EKS cluster
 
 ```
-aws s3 cp CF-external-dns.yml \
+aws s3 cp templates/CF-external-dns.yml \
 s3://${TEMPLATE_BUCKET_NAME}/CF-external-dns.yml
 ```
 
@@ -148,9 +152,9 @@ export EKSQuickStartDeployRole=
 
 ```
 aws cloudformation create-stack --stack-name ${APPLICATION_NAME}-products \
- --template-body file://catalog-products.yaml \
+ --template-body file://templates/catalog-products.yaml \
  --parameters ParameterKey=ApplicationName,ParameterValue=$APPLICATION_NAME \
- ParameterKey=TemplateBucketName,ParameterValue=${TEMPLATE_BUCKET_NAME} 
+ ParameterKey=TemplateBucketName,ParameterValue=${TEMPLATE_BUCKET_NAME}
 ```
 
 Watch status creation:
@@ -162,13 +166,13 @@ watch aws cloudformation describe-stacks --stack-name ${APPLICATION_NAME}-produc
 >
 > ```
 > aws cloudformation update-stack --stack-name ${APPLICATION_NAME}-products \
-> --template-body file://catalog-products.yaml \
+> --template-body file://templates/catalog-products.yaml \
 > --parameters ParameterKey=ApplicationName,ParameterValue=$APPLICATION_NAME \
 > ParameterKey=TemplateBucketName,ParameterValue=${TEMPLATE_BUCKET_NAME}
 > ```
 
 
-> /!\ Important: If you have updated a CloudFormation template in the s3, you need to update the catalog-products.yaml with a new version for your file and update the stack!
+> /!\ Important: If you have updated a CloudFormation template in the s3, you need to update the templates/catalog-products.yaml with a new version for your file and update the stack!
 
 ## Launch products from Service Catalog
 
@@ -204,7 +208,7 @@ In my example case I add:
 - NodeGroupSecurityGroup	sg-0e0ec804f03818d2b
 ```
 
-#### Configure the OIDC Provider 
+#### Configure the OIDC Provider
 
 In order to be able to make uses of the IRSA (IAM Role for Service Accounts), we need to activate the oidc provicer for our EKS cluster in IAM
 
@@ -239,10 +243,10 @@ The Stack will ask for parameters, here an example with my values:
 2. Name of OIDC Provider from EKS: **oidc.eks.us-east-1.amazonaws.com/id/4F9496D7909B01C706AF9112F12AF099**
 3. The EKS cluster name: **EKS-NhlPp5YSriC3**
 5. KubeConfigPath from EKS stack Outputs: **s3://sc-382076407153-pp-guoexe62p4rrq-kubeconfigbucket-t3lo35vllxjt/.kube/config.enc**
-6. HelmLambdaArn from EKS stack Outputs: 
+6. HelmLambdaArn from EKS stack Outputs:
 8. keep the default for others
 
-> replace with your values 
+> replace with your values
 
 Let the others options as default and Launch the stack.
 
@@ -264,10 +268,10 @@ Example with my values:
 4. choose the EKS cluster name: **EKS-NhlPp5YSriC3**
 5. KubeConfigPath from EKS stack Outputs: **s3://sc-382076407153-pp-guoexe62p4rrq-kubeconfigbucket-t3lo35vllxjt/.kube/config.enc**
 6. Name of OIDC Provider from EKS: **oidc.eks.us-east-1.amazonaws.com/id/4F9496D7909B01C706AF9112F12AF099**
-7. HelmLambdaArn from EKS stack Outputs: 
+7. HelmLambdaArn from EKS stack Outputs:
 8. keep the default for others
 
-> replace with your values 
+> replace with your values
 
 > The Service Catalog will create a Role and Policy for our ExternalDNS. It will then create the Controller from the official Helm Chart
 which will be deploy thanks to a dedicated Lambda Function that extends CloudFormation features (Custom Ressources)
@@ -383,7 +387,7 @@ git remote add codecommit codecommit::us-east-1://SC-382076407153-pp-u37xbryirgh
 Then push your code to the CodeCommit repository:
 
 ```
-git push codecommit master 
+git push codecommit master
 ```
 
 Wait a little, and a new pipeline should automatically triggered
