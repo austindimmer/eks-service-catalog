@@ -144,17 +144,21 @@ s3://${TEMPLATE_BUCKET_NAME}/CF-external-dns.yml
 
 This template will create the Service Catalog, exposing different products that are referenced in the catalog and where their associated CloudFormation templates are stores in the S3 Bucket.
 
-First, get the Role name the Catalog will used to create the EKS QuickStart cluster.
+To be able to later create the QuickStart EKS cluster from ServiceCatalog, we need until this [issue](https://github.com/aws-quickstart/quickstart-amazon-eks/issues/120) will be clearer 
+to get a role or user with Admin rights (I didn't manage to figure out the least privileged needed yet)
+
+ìn my case, I have a MB3 role that meet this constraints.
 
 ```
-export EKSQuickStartDeployRole=
+export EKSQuickStartDeployRole=MB3
 ```
 
 ```
-aws cloudformation create-stack --stack-name ${APPLICATION_NAME}-products \
+aws cloudformation update-stack --stack-name ${APPLICATION_NAME}-products \
  --template-body file://templates/catalog-products.yaml \
  --parameters ParameterKey=ApplicationName,ParameterValue=$APPLICATION_NAME \
- ParameterKey=TemplateBucketName,ParameterValue=${TEMPLATE_BUCKET_NAME}
+ ParameterKey=TemplateBucketName,ParameterValue=${TEMPLATE_BUCKET_NAME} \
+ ParameterKey=EKSQuickStartDeployRole,ParameterValue=${EKSQuickStartDeployRole}
 ```
 
 Watch status creation:
@@ -193,9 +197,12 @@ This can take up to 30mn to create all elements
 
 Go to CloudFormation and store the Outputs parameters as we will need them.
 
+> TODO: Explain that if you don't put arn of user or role you have access to, you may be locked-out of your EKS cluster!!
+aws 
+
 If you are using a specific IAM user to work on AWS, don't forget to put the arn of your user or role in the **Additional EKS admin ARNs**
 
-in my case I needed to add : `arn:aws:iam::382076407153:user/cdkmb3`
+in my case I needed to add : `arn:aws:iam::xxxxxxxxx:user/cdkmb3`
 
 In my example case I add:
 
@@ -213,12 +220,16 @@ In my example case I add:
 In order to be able to make uses of the IRSA (IAM Role for Service Accounts), we need to activate the oidc provicer for our EKS cluster in IAM
 
 ```
-eksctl utils associate-iam-oidc-provider --cluster <your EKS cluster name> --approve
+CLUSTER_NAME=EKS-UkZlTEVZaSxB
+eksctl utils associate-iam-oidc-provider --cluster ${CLUSTER_NAME} --approve
+KubeOIDCProvider=$(aws eks describe-cluster --name $CLUSTER_NAME --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
+echo $KubeOIDCProvider
 ```
 
 Note the OIDC Provider name from your EKS console. Example in my case :
 ```
-OIDCProvider oidc.eks.us-east-1.amazonaws.com/id/4F9496D7909B01C706AF9112F12AF099
+KubeOIDCProvider=$(aws eks describe-cluster --name $CLUSTER_NAME --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
+echo $KubeOIDCProvider
 ```
 Even if we have not created our cluster with eksctl, we can use it to leverage this action easilly :)
 
@@ -227,7 +238,7 @@ Even if we have not created our cluster with eksctl, we can use it to leverage t
 You now need to ask eks to configure your local kubectl so that you can access to your EKS cluster
 
 ```
-aws eks update-kubeconfig --name EKS-NhlPp5YSriC3
+aws eks update-kubeconfig --name ${CLUSTER_NAME}
 ```
 
 
@@ -329,11 +340,18 @@ aws secretsmanager create-secret --name cassandra --secret-string "{\"username\"
 From the **capi** repository launch the CloudFormation stack to create the CAPI Role
 
 ```
+for var in CAPISecret KubeOIDCProvider; do 
+  echo $var=${!var}
+  if [ "${!x}" = "" ]; then echo "you need to set $x" ; fi 
+  echo 
+done
+if [ "${CAPISecret}" = "" ]; then echo "you need to set CAPISecret" ; fi 
+
 aws cloudformation create-stack --stack-name capi-role \
 --template-body file://CF-iam-role-capi.yaml \
 --capabilities CAPABILITY_NAMED_IAM \
---parameters ParameterKey=SecretArn,ParameterValue=arn:aws:secretsmanager:us-east-1:382076407153:secret:cassandra-6ozDEb \
-ParameterKey=KubeOIDCProvider,ParameterValue=oidc.eks.us-east-1.amazonaws.com/id/4F9496D7909B01C706AF9112F12AF099
+--parameters ParameterKey=SecretArn,ParameterValue=${CAPISecret} \
+ParameterKey=KubeOIDCProvider,ParameterValue=${KubeOIDCProvider}
 ```
 
 ### Configure the pipeline
@@ -342,15 +360,55 @@ Then, as describe [here](https://github.com/allamand/capi#configure-the-pipeline
 
 In this example, I will uses:
 
+- **NAMESPACE** - capi
 - **DOMAIN** - capi.demo3.allamand.com
 - **CERTIFICATE_ARN** - arn:aws:acm:us-east-2:382076407153:certificate/ea403661-91ce-4149-adff-dc4b89126d25
 - **SERVICE_ACCOUNT_ROLE_ARN** - arn:aws:iam::382076407153:role/capi-role-CAPIRole-1JD6TZIKGUT5Y
 - **CODE_PIPELINE_ARTIFACT_BUCKET** - sc-382076407153-pp-u37xb-codepipelineartifactbuck-1gl9kzny6npwr
-- **NAMESPACE** - capi
+
+
+```
+NAMESPACE=capi
+DOMAIN=capi.demo3.allamand.com
+CERTIFICATE_ARN=$(aws acm list-certificates --query 'CertificateSummaryList[?DomainName==`*.mb3.allamand.com`].CertificateArn' --output text)
+echo $CERTIFICATE_ARN
+export SERVICE_ACCOUNT_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name capi-role --query 'Stacks[0].Outputs[?OutputKey==`CAPIRoleArn`].OutputValue' --output text)
+echo $SERVICE_ACCOUNT_ROLE_ARN
+CODE_PIPELINE_ARTIFACT_BUCKET=TODO
+```
+
 
 > You can't change the Namespace in the environment variable, if you don't change the Namespace in the CF-iam-role-capi.yaml CloudFormation template which creates the CAPI IAM Role.
 
-Go to CodeCommit to retrieve the connections parameters to your repository.
+
+### Configure the CodeCommit repository
+
+Go to CodeCommit to retrieve the connections parameters to your repository and add it to the capi repo
+
+Example:
+
+```
+git remote add mb3 https://git-codecommit.us-east-1.amazonaws.com/v1/repos/SC-665742499430-pp-dw4o4fvtfyquk    
+```
+
+and push the code to the repository
+
+```
+git push mb3 master
+```
+
+This will trigger the CodeCommit Pipeline and build & deploy your application.
+
+
+### Connect to the EKS Cluster
+
+If you don't already configure eksctl, you can do it now
+
+```
+aws eks update-kubeconfig --name ${CLUSTER_NAME}
+```
+
+
 
 > /!\ Actually the EKS_KUBECTL_ROLE_ARN define in the pipeline is not correctly added to the aws-auth ConfigMap, so you need to manually
 add it
@@ -391,6 +449,67 @@ git push codecommit master
 ```
 
 Wait a little, and a new pipeline should automatically triggered
+
+
+## TroubleShooting
+
+### I am not able to connect to my EKS cluster.
+
+This is going if you didn't added additional arn to manage the EKS cluster in the Service Catlog parameters.
+EKS admin is by default the user who create the cluster, in our case it is the **sc-launch-role**.
+
+In order to retrieve access to the cluster, tou must be able to assume that role, in order to configure the cluster with another Role or User you have access to.
+
+If you are not allowed to access this role, then you'll need to delete the cluster and recreate it with the appropriate parameters
+
+```
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "servicecatalog.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    },
+       {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::727820809195:root"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+Then, configure aws cli to be able to assume the arn role
+
+```
+[profile debug]
+role_arn=arn:aws:iam::xxxxxxxxxx:role/sc-launch-role
+source_profile=cdkmb3
+```
+
+next we need to configure kubectl to use this debug profile in the `~/.kube/config` file add `--profile debug` like this
+
+```
+- name: arn:aws:eks:us-east-1:665742499430:cluster/EKS-UkZlTEVZaSxB
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1alpha1
+      args:
+      - --profile
+      - debug
+      - --region
+      - us-east-1
+      - eks
+      - get-token
+      - --cluster-name
+      - EKS-UkZlTEVZaSxB
+      command: aws
+```
 
 
 

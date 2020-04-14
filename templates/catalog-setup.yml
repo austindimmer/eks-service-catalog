@@ -5,13 +5,13 @@ Parameters:
 
   ApplicationName:
     Type: String
-  
+
 Resources:
-  
+
   #Template Bucket to store out CF Templates products
   TemplateBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Delete      
+    DeletionPolicy: Delete
 
   TemplateBucketPolicy:
     Type: 'AWS::S3::BucketPolicy'
@@ -19,14 +19,14 @@ Resources:
       Bucket: !Ref TemplateBucket
       PolicyDocument:
         Version: 2012-10-17
-        Statement:        
+        Statement:
           - Sid: DenyInsecureConnections
             Effect: Deny
             Principal: '*'
             Action: 's3:*'
-            Resource: !Join 
+            Resource: !Join
               - ''
-              - - !GetAtt 
+              - - !GetAtt
                   - TemplateBucket
                   - Arn
                 - /*
@@ -61,7 +61,7 @@ Resources:
           -
             Effect: Allow
             Resource: "*"
-            Action: 
+            Action:
               - codebuild:*
               - codepipeline:*
               - codecommit:*
@@ -77,19 +77,22 @@ Resources:
               - events:RemovePermission
               - ec2:CreateSecurityGroup
               - ec2:DeleteSecurityGroup
-              - ec2:Describe*         
+              - ec2:Describe*
               - iam:PassRole
               - iam:CreateRole
               - iam:CreatePolicy
-              - iam:CreateRolePolicy
               - iam:AttachRolePolicy
               - iam:DeleteRole
               - iam:DeletePolicy
               - iam:DetachRolePolicy
               - iam:DeleteRolePolicy
+              - iam:AddRoleToInstanceProfile
+              - iam:RemoveRoleFromInstanceProfile
               - iam:Get*
               - iam:PutRolePolicy
-              - catalog-user:*
+              - iam:CreateInstanceProfile
+              - iam:DeleteInstanceProfile
+              - iam:ListPolicyVersions
               - ec2:AuthorizeSecurityGroupIngress
               - ec2:RevokeSecurityGroupIngress
               - cloudformation:CreateStack
@@ -104,7 +107,10 @@ Resources:
               - s3:CreateBucket
               - s3:DeleteBucket
               - s3:PutBucketPolicy
+              - s3:PutBucketTagging
               - s3:DeleteBucketPolicy
+              - kms:CreateKey
+              - kms:DisableKey
               - lambda:*
       Roles:
         -
@@ -124,7 +130,7 @@ Resources:
             Action: sts:AssumeRole
       Policies:
         - PolicyName: root
-          PolicyDocument: 
+          PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Action:
@@ -194,6 +200,7 @@ Resources:
                 - ssm:GetAutomationExecution
                 - config:DescribeConfigurationRecorders
                 - config:DescribeConfigurationRecorderStatus
+                - sns:ListTopics
                 Resource: "*"
               - Effect: Allow
                 Action:
@@ -237,12 +244,12 @@ Resources:
                 - codepipeline:ListPipelines
                 Resource:
                 - !Sub arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:*
-                Effect: Allow        
+                Effect: Allow
 
 Outputs:
   ProductTeamRoleName:
     Value: !Ref ProductTeamRole
-  ScLaunchRoleName:    
+  ScLaunchRoleName:
     Value: !Ref SCLaunchRole
   TemplateBucketName:
     Value: !Ref TemplateBucket
