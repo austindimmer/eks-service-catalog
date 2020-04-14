@@ -144,7 +144,7 @@ s3://${TEMPLATE_BUCKET_NAME}/CF-external-dns.yml
 
 This template will create the Service Catalog, exposing different products that are referenced in the catalog and where their associated CloudFormation templates are stores in the S3 Bucket.
 
-To be able to later create the QuickStart EKS cluster from ServiceCatalog, we need until this [issue](https://github.com/aws-quickstart/quickstart-amazon-eks/issues/120) will be clearer 
+To be able to later create the QuickStart EKS cluster from ServiceCatalog, we need until this [issue](https://github.com/aws-quickstart/quickstart-amazon-eks/issues/120) will be clearer
 to get a role or user with Admin rights (I didn't manage to figure out the least privileged needed yet)
 
 ìn my case, I have a MB3 role that meet this constraints.
@@ -198,7 +198,7 @@ This can take up to 30mn to create all elements
 Go to CloudFormation and store the Outputs parameters as we will need them.
 
 > TODO: Explain that if you don't put arn of user or role you have access to, you may be locked-out of your EKS cluster!!
-aws 
+aws
 
 If you are using a specific IAM user to work on AWS, don't forget to put the arn of your user or role in the **Additional EKS admin ARNs**
 
@@ -334,19 +334,27 @@ CASSANDRA_CREDS=$(aws iam create-service-specific-credential \
 Create the Cassandra Secret to store thoses credentials
 
 ```
-aws secretsmanager create-secret --name cassandra --secret-string "{\"username\": $(echo $CASSANDRA_CREDS | jq '.ServiceSpecificCredential.ServiceUserName'),\"password\": $(echo $CASSANDRA_CREDS | jq '.ServiceSpecificCredential.ServicePassword')}"
+aws secretsmanager create-secret --name cassandramb3 --secret-string "{\"username\": $(echo $CASSANDRA_CREDS | jq '.ServiceSpecificCredential.ServiceUserName'),\"password\": $(echo $CASSANDRA_CREDS | jq '.ServiceSpecificCredential.ServicePassword')}"
 ```
 
 From the **capi** repository launch the CloudFormation stack to create the CAPI Role
 
 ```
-for var in CAPISecret KubeOIDCProvider; do 
-  echo $var=${!var}
-  if [ "${!x}" = "" ]; then echo "you need to set $x" ; fi 
-  echo 
-done
-if [ "${CAPISecret}" = "" ]; then echo "you need to set CAPISecret" ; fi 
+CAPISecret=$(aws secretsmanager describe-secret --secret-id cassandramb3 --query 'ARN' --output text)
+echo $CAPISecret
+```
 
+Check all var are OK
+```
+for var in CAPISecret KubeOIDCProvider; do
+  eval "value=\"\${$var}\""
+  if [ "$value" = "" ]; then echo "you need to set $var" ; fi
+  echo
+done
+```
+
+and create the CloudFormation stack for our capi-role
+```
 aws cloudformation create-stack --stack-name capi-role \
 --template-body file://CF-iam-role-capi.yaml \
 --capabilities CAPABILITY_NAMED_IAM \
@@ -388,7 +396,7 @@ Go to CodeCommit to retrieve the connections parameters to your repository and a
 Example:
 
 ```
-git remote add mb3 https://git-codecommit.us-east-1.amazonaws.com/v1/repos/SC-665742499430-pp-dw4o4fvtfyquk    
+git remote add mb3 https://git-codecommit.us-east-1.amazonaws.com/v1/repos/SC-665742499430-pp-dw4o4fvtfyquk
 ```
 
 and push the code to the repository
