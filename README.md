@@ -1,5 +1,9 @@
 # EKS Service Catalog blueprint
 
+
+[![video tutorial](https://i.imgur.com/PasvzFJ.png)](https://youtu.be/eSremKDSDlk "video tutorial")
+
+
 It is common pattern for AWS customers to be able to provide IT as a service for their products teams.
 For instance, giving the ability for developers to be able to quickly deploy and uses AWS services in
 order to allow them to build & deploy new products for their own customers.
